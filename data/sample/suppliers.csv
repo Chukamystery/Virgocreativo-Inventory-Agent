@@ -1,0 +1,4 @@
+supplier_id,supplier_code,name,email,phone,lead_time_days,currency,active
+1,SUP-001,Alpha Tech Supplies,orders@alphatech.example,+234000000001,5,NGN,1
+2,SUP-002,OfficeHub Distribution,sales@officehub.example,+234000000002,3,NGN,1
+3,SUP-003,NetWorks Wholesale,orders@networks.example,+234000000003,7,NGN,1

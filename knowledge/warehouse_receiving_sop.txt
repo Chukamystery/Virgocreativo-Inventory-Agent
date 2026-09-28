@@ -1,0 +1,53 @@
+WAREHOUSE RECEIVING SOP
+Learning Sample - Version 1.0
+
+PURPOSE
+
+This SOP defines the learning procedure for receiving goods
+into the warehouse.
+
+STANDARD RECEIVING PROCEDURE
+
+1. Confirm the delivery reference or purchase documentation.
+
+2. Verify the product identity and quantity delivered.
+
+3. Inspect the goods for visible damage.
+
+4. Compare the delivered quantity with the expected quantity.
+
+5. Record accepted stock through the approved RECEIPT stock
+   movement workflow.
+
+6. Inventory must not be updated by directly editing the
+   quantity_on_hand field.
+
+DAMAGED GOODS
+
+7. Damaged goods must be separated from accepted stock.
+
+8. Do not record damaged goods as normal available inventory
+   unless they have been formally accepted.
+
+9. Record the damage details and delivery reference.
+
+10. Notify the responsible warehouse or procurement person.
+
+11. Follow the organization's return, replacement or claims
+    process where applicable.
+
+QUANTITY DIFFERENCES
+
+12. If the quantity delivered differs from the expected
+    quantity, document the discrepancy.
+
+13. Only the verified accepted quantity should be recorded
+    through the approved stock-movement workflow.
+
+14. Significant discrepancies should be escalated to the
+    responsible manager.
+
+AUDIT
+
+15. All inventory receipts must remain traceable through stock
+    movement and audit records.

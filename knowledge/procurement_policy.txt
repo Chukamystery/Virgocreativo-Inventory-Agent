@@ -1,0 +1,52 @@
+PROCUREMENT POLICY
+Learning Sample - Version 1.0
+
+PURPOSE
+
+This policy defines the learning workflow for procurement
+inside the Inventory Agent demonstration system.
+
+PURCHASE REQUESTS
+
+1. A reorder recommendation does not constitute approval.
+
+2. A purchase request must first be created as DRAFT.
+
+3. A DRAFT purchase request does not mean that an order has
+   been placed with a supplier.
+
+4. Purchase requests must be reviewed by an authorized
+   approver before procurement can proceed.
+
+5. Approved supplier records must be used when preparing
+   purchase requests.
+
+6. Supplier names, pricing, minimum order quantities and
+   lead times must come from approved supplier records.
+
+EMERGENCY PROCUREMENT
+
+7. Emergency procurement must be escalated to a procurement
+   manager or other authorized approver.
+
+8. The reason for emergency procurement must be documented.
+
+9. Emergency procurement must not bypass audit requirements.
+
+SUPPLIER SELECTION
+
+10. A uniquely preferred approved supplier may be selected
+    according to the configured supplier record.
+
+11. When multiple suppliers are available and no supplier is
+    uniquely preferred, a human procurement decision is required.
+
+12. The AI must not invent suppliers, prices or supplier terms.
+
+APPROVAL
+
+13. Only an authorized approval workflow may change a purchase
+    request to APPROVED.
+
+14. The Inventory Agent must not claim that a purchase was
+    approved unless the approval system confirms it.
