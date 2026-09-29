@@ -246,8 +246,8 @@ except InventoryAPIError as exc:
     )
 
     st.warning(
-        "Make sure FastAPI is running "
-        "on http://127.0.0.1:8000"
+        "The Inventory Agent backend is currently unavailable. "
+        "Please wait a moment and try again."
     )
 
     st.stop()

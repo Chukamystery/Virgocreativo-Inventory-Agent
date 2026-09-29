@@ -25,7 +25,7 @@ def api_request(
     url = f"{API_BASE_URL}{endpoint}"
 
     try:
-        timeout = kwargs.pop("timeout", 10)
+        timeout = kwargs.pop("timeout", 90)
 
         response = requests.request(
             method=method,
