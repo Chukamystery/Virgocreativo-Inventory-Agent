@@ -2,7 +2,7 @@ import json
 import pandas as pd
 import streamlit as st
 
-from ui.api_client import (
+from api_client import (
     API_BASE_URL,
     InventoryAPIError,
     approve_purchase_request,
