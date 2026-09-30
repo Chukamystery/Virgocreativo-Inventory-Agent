@@ -1,16 +1,30 @@
 import os
 
 import requests
+import streamlit as st
 from dotenv import load_dotenv
 
 
 load_dotenv()
 
 
-API_BASE_URL = os.getenv(
-    "API_BASE_URL",
-    "http://127.0.0.1:8000",
-).rstrip("/")
+def get_api_base_url():
+    # First try Streamlit Cloud secrets
+    try:
+        streamlit_url = st.secrets["API_BASE_URL"]
+        if streamlit_url:
+            return str(streamlit_url).rstrip("/")
+    except (KeyError, FileNotFoundError):
+        pass
+
+    # Then try local .env/environment variables
+    return os.getenv(
+        "API_BASE_URL",
+        "http://127.0.0.1:8000",
+    ).rstrip("/")
+
+
+API_BASE_URL = get_api_base_url()
 
 
 class InventoryAPIError(Exception):
