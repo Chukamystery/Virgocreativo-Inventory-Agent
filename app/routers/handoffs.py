@@ -7,7 +7,9 @@ from fastapi import (
 from sqlalchemy.orm import Session
 
 from app import schemas
+from app.auth import get_current_user
 from app.database import get_db
+from app.models import User
 from app.services.handoff_service import (
     create_handoff,
     get_handoffs,
@@ -18,8 +20,15 @@ from app.services.handoff_service import (
 router = APIRouter(
     prefix="/handoffs",
     tags=["Human Handoff"],
+    dependencies=[
+        Depends(get_current_user)
+    ],
 )
 
+
+# =====================================================
+# CREATE HUMAN HANDOFF
+# =====================================================
 
 @router.post(
     "",
@@ -27,6 +36,9 @@ router = APIRouter(
 )
 def create_human_handoff(
     request: schemas.HumanHandoffCreate,
+    current_user: User = Depends(
+        get_current_user
+    ),
     db: Session = Depends(get_db),
 ):
     try:
@@ -36,9 +48,13 @@ def create_human_handoff(
             summary=request.summary,
             entity_type=request.entity_type,
             entity_id=request.entity_id,
+
+            # Do not trust the ID from the request body.
+            # Use the authenticated user instead.
             requested_by_user_id=(
-                request.requested_by_user_id
+                current_user.user_id
             ),
+
             context=request.context,
         )
 
@@ -76,6 +92,10 @@ def create_human_handoff(
         )
 
 
+# =====================================================
+# LIST HUMAN HANDOFFS
+# =====================================================
+
 @router.get(
     "",
     response_model=list[
@@ -92,6 +112,10 @@ def list_handoffs(
     )
 
 
+# =====================================================
+# RESOLVE HUMAN HANDOFF
+# =====================================================
+
 @router.post(
     "/{handoff_id}/resolve",
     response_model=schemas.HumanHandoffRead,
@@ -99,15 +123,22 @@ def list_handoffs(
 def resolve_human_handoff(
     handoff_id: int,
     request: schemas.HumanHandoffResolveRequest,
+    current_user: User = Depends(
+        get_current_user
+    ),
     db: Session = Depends(get_db),
 ):
     try:
         return resolve_handoff(
             db=db,
             handoff_id=handoff_id,
+
+            # Do not trust performed_by_user_id
+            # from the frontend.
             performed_by_user_id=(
-                request.performed_by_user_id
+                current_user.user_id
             ),
+
             resolution_note=(
                 request.resolution_note
             ),

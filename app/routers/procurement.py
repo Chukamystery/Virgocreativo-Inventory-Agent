@@ -7,7 +7,9 @@ from fastapi import (
 from sqlalchemy.orm import Session
 
 from app import schemas
+from app.auth import get_current_user
 from app.database import get_db
+from app.models import User
 from app.services.approval_service import (
     approve_purchase_request,
     get_approval_history,
@@ -24,6 +26,9 @@ from app.services.procurement_service import (
 router = APIRouter(
     prefix="/purchase-requests",
     tags=["Procurement"],
+    dependencies=[
+        Depends(get_current_user)
+    ],
 )
 
 
@@ -37,6 +42,7 @@ router = APIRouter(
 )
 def prepare_request(
     request: schemas.PreparePurchaseRequest,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     try:
@@ -44,23 +50,13 @@ def prepare_request(
             db=db,
             product_id=request.product_id,
             location_id=request.location_id,
-            requested_by_user_id=(
-                request.requested_by_user_id
-            ),
+            requested_by_user_id=current_user.user_id,
             notes=request.notes,
         )
 
-        header = result[
-            "purchase_request"
-        ]
-
-        lines = result[
-            "lines"
-        ]
-
-        supplier = result[
-            "supplier"
-        ]
+        header = result["purchase_request"]
+        lines = result["lines"]
+        supplier = result["supplier"]
 
         return {
             "purchase_request_id":
@@ -214,27 +210,19 @@ def list_purchase_requests(
 def submit_request(
     purchase_request_id: int,
     request: schemas.PurchaseRequestActionRequest,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     try:
         result = submit_purchase_request(
             db=db,
-            purchase_request_id=(
-                purchase_request_id
-            ),
-            performed_by_user_id=(
-                request.performed_by_user_id
-            ),
+            purchase_request_id=purchase_request_id,
+            performed_by_user_id=current_user.user_id,
             comment=request.comment,
         )
 
-        header = result[
-            "purchase_request"
-        ]
-
-        approval = result[
-            "approval"
-        ]
+        header = result["purchase_request"]
+        approval = result["approval"]
 
         return {
             "purchase_request_id":
@@ -270,8 +258,6 @@ def submit_request(
             status_code=400,
             detail=str(exc),
         )
-
-
 # =====================================================
 # APPROVE
 # =====================================================
@@ -285,27 +271,19 @@ def submit_request(
 def approve_request(
     purchase_request_id: int,
     request: schemas.PurchaseRequestActionRequest,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     try:
         result = approve_purchase_request(
             db=db,
-            purchase_request_id=(
-                purchase_request_id
-            ),
-            performed_by_user_id=(
-                request.performed_by_user_id
-            ),
+            purchase_request_id=purchase_request_id,
+            performed_by_user_id=current_user.user_id,
             comment=request.comment,
         )
 
-        header = result[
-            "purchase_request"
-        ]
-
-        approval = result[
-            "approval"
-        ]
+        header = result["purchase_request"]
+        approval = result["approval"]
 
         return {
             "purchase_request_id":
@@ -341,7 +319,6 @@ def approve_request(
             status_code=400,
             detail=str(exc),
         )
-
 
 # =====================================================
 # REJECT
@@ -356,27 +333,19 @@ def approve_request(
 def reject_request(
     purchase_request_id: int,
     request: schemas.PurchaseRequestActionRequest,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     try:
         result = reject_purchase_request(
             db=db,
-            purchase_request_id=(
-                purchase_request_id
-            ),
-            performed_by_user_id=(
-                request.performed_by_user_id
-            ),
+            purchase_request_id=purchase_request_id,
+            performed_by_user_id=current_user.user_id,
             comment=request.comment,
         )
 
-        header = result[
-            "purchase_request"
-        ]
-
-        approval = result[
-            "approval"
-        ]
+        header = result["purchase_request"]
+        approval = result["approval"]
 
         return {
             "purchase_request_id":

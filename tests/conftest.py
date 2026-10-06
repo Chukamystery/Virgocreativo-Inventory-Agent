@@ -4,28 +4,21 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 
+from app import models
+from app.auth import get_current_user
 from app.database import Base, get_db
 from app.main import app
 
-# Import models so SQLAlchemy knows about
-# every table before create_all() runs.
-from app import models
 
+# =====================================================
+# TEST DATABASE
+# =====================================================
 
 @pytest.fixture()
 def test_database(tmp_path):
     """
     Create a completely separate SQLite
     database for each test.
-
-    The database is created inside pytest's
-    temporary folder and is removed after
-    testing.
-
-    This means our real development database:
-        data/inventory_agent.db
-
-    is not used by automated tests.
     """
 
     database_file = (
@@ -44,8 +37,6 @@ def test_database(tmp_path):
         },
     )
 
-    # SQLite does not enforce foreign keys
-    # automatically, so enable them for tests.
     @event.listens_for(
         test_engine,
         "connect",
@@ -93,6 +84,11 @@ def test_database(tmp_path):
 
     test_engine.dispose()
 
+
+# =====================================================
+# DATABASE SESSION
+# =====================================================
+
 @pytest.fixture()
 def db_session(test_database):
     """
@@ -101,7 +97,9 @@ def db_session(test_database):
     """
 
     TestingSessionLocal = (
-        test_database["session_factory"]
+        test_database[
+            "session_factory"
+        ]
     )
 
     db = TestingSessionLocal()
@@ -113,12 +111,21 @@ def db_session(test_database):
         db.rollback()
         db.close()
 
+
+# =====================================================
+# NORMAL / UNAUTHENTICATED CLIENT
+# =====================================================
+
 @pytest.fixture()
 def client(test_database):
     """
-    Create a FastAPI TestClient whose
-    database dependency points to the
-    temporary pytest database.
+    FastAPI TestClient using the temporary
+    test database.
+
+    No authenticated user is supplied here.
+
+    Use this fixture when testing that
+    unauthenticated access is rejected.
     """
 
     TestingSessionLocal = (
@@ -142,6 +149,123 @@ def client(test_database):
     app.dependency_overrides[
         get_db
     ] = override_get_db
+
+    with TestClient(
+        app
+    ) as test_client:
+
+        yield test_client
+
+    app.dependency_overrides.clear()
+
+
+# =====================================================
+# AUTHENTICATED TEST USER
+# =====================================================
+
+@pytest.fixture()
+def authenticated_user(
+    test_database,
+):
+    """
+    Create a real business user inside
+    the temporary test database.
+
+    This avoids using real Supabase users,
+    passwords or access tokens during tests.
+    """
+
+    TestingSessionLocal = (
+        test_database[
+            "session_factory"
+        ]
+    )
+
+    db = TestingSessionLocal()
+
+    user = models.User(
+        full_name=(
+            "Authenticated Test Admin"
+        ),
+        role="ADMIN",
+        active=True,
+        auth_user_id=(
+            "00000000-0000-0000-0000-000000000001"
+        ),
+    )
+
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    # Save the values before closing
+    # the SQLAlchemy session.
+    user_id = user.user_id
+    full_name = user.full_name
+    role = user.role
+    active = user.active
+    auth_user_id = user.auth_user_id
+
+    db.close()
+
+    # Return a normal User object representing
+    # the authenticated account.
+    authenticated = models.User(
+        user_id=user_id,
+        full_name=full_name,
+        role=role,
+        active=active,
+        auth_user_id=auth_user_id,
+    )
+
+    return authenticated
+
+
+# =====================================================
+# AUTHENTICATED CLIENT
+# =====================================================
+
+@pytest.fixture()
+def authenticated_client(
+    test_database,
+    authenticated_user,
+):
+    """
+    FastAPI TestClient that behaves as if
+    a valid Supabase user has already been
+    authenticated.
+
+    Supabase itself is not contacted.
+    """
+
+    TestingSessionLocal = (
+        test_database[
+            "session_factory"
+        ]
+    )
+
+    def override_get_db():
+
+        db = (
+            TestingSessionLocal()
+        )
+
+        try:
+            yield db
+
+        finally:
+            db.close()
+
+    def override_get_current_user():
+        return authenticated_user
+
+    app.dependency_overrides[
+        get_db
+    ] = override_get_db
+
+    app.dependency_overrides[
+        get_current_user
+    ] = override_get_current_user
 
     with TestClient(
         app

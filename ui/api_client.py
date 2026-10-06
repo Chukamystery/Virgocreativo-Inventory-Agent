@@ -8,28 +8,61 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
-def get_api_base_url():
-    # First try Streamlit Cloud secrets
+# =====================================================
+# SETTINGS
+# =====================================================
+
+def get_setting(
+    name: str,
+    default: str = "",
+):
+    """
+    Read from Streamlit Cloud secrets first,
+    then fall back to local environment variables.
+    """
+
     try:
-        streamlit_url = st.secrets["API_BASE_URL"]
-        if streamlit_url:
-            return str(streamlit_url).rstrip("/")
+        value = st.secrets[name]
+
+        if value:
+            return str(value)
+
     except (KeyError, FileNotFoundError):
         pass
 
-    # Then try local .env/environment variables
     return os.getenv(
-        "API_BASE_URL",
-        "http://127.0.0.1:8000",
-    ).rstrip("/")
+        name,
+        default,
+    )
 
 
-API_BASE_URL = get_api_base_url()
+API_BASE_URL = get_setting(
+    "API_BASE_URL",
+    "http://127.0.0.1:8000",
+).rstrip("/")
 
+
+SUPABASE_URL = get_setting(
+    "SUPABASE_URL",
+).rstrip("/")
+
+
+SUPABASE_PUBLISHABLE_KEY = get_setting(
+    "SUPABASE_PUBLISHABLE_KEY",
+)
+
+
+# =====================================================
+# CUSTOM ERROR
+# =====================================================
 
 class InventoryAPIError(Exception):
     pass
 
+
+# =====================================================
+# GENERIC API REQUEST
+# =====================================================
 
 def api_request(
     method: str,
@@ -38,12 +71,34 @@ def api_request(
 ):
     url = f"{API_BASE_URL}{endpoint}"
 
+    headers = dict(
+        kwargs.pop(
+            "headers",
+            {},
+        )
+    )
+
+    # Automatically attach the logged-in user's token.
+    access_token = st.session_state.get(
+        "access_token"
+    )
+
+    if access_token:
+        headers.setdefault(
+            "Authorization",
+            f"Bearer {access_token}",
+        )
+
     try:
-        timeout = kwargs.pop("timeout", 90)
+        timeout = kwargs.pop(
+            "timeout",
+            90,
+        )
 
         response = requests.request(
             method=method,
             url=url,
+            headers=headers,
             timeout=timeout,
             **kwargs,
         )
@@ -80,44 +135,122 @@ def api_request(
     return response_data
 
 
+# =====================================================
+# AUTHENTICATION
+# =====================================================
+
+def login_user(
+    email: str,
+    password: str,
+):
+    """
+    Authenticate with Supabase Auth.
+    """
+
+    if (
+        not SUPABASE_URL
+        or not SUPABASE_PUBLISHABLE_KEY
+    ):
+        raise InventoryAPIError(
+            "Supabase authentication is not configured."
+        )
+
+    url = (
+        f"{SUPABASE_URL}"
+        "/auth/v1/token?grant_type=password"
+    )
+
+    try:
+        response = requests.post(
+            url,
+            headers={
+                "apikey":
+                    SUPABASE_PUBLISHABLE_KEY,
+
+                "Content-Type":
+                    "application/json",
+            },
+            json={
+                "email": email,
+                "password": password,
+            },
+            timeout=30,
+        )
+
+    except requests.RequestException as exc:
+        raise InventoryAPIError(
+            "Could not connect to the authentication service."
+        ) from exc
+
+    try:
+        data = response.json()
+
+    except ValueError:
+        data = {}
+
+    if not response.ok:
+        raise InventoryAPIError(
+            data.get("error_description")
+            or data.get("msg")
+            or data.get("message")
+            or "Login failed."
+        )
+
+    return data
+
+
+def get_my_profile():
+    """
+    Return the Inventory Agent user linked
+    to the authenticated Supabase account.
+    """
+
+    return api_request(
+        method="GET",
+        endpoint="/auth/me",
+    )
+
+
+# =====================================================
+# PRODUCTS
+# =====================================================
+
 def get_products():
     return api_request(
         method="GET",
         endpoint="/products",
     )
 
-def get_inventory():
-    """
-    Retrieve current inventory balances.
-    """
 
+# =====================================================
+# INVENTORY
+# =====================================================
+
+def get_inventory():
     return api_request(
         method="GET",
         endpoint="/inventory",
     )
 
 
-def get_low_stock():
-    """
-    Retrieve current low-stock items and
-    reorder recommendations.
-    """
+# =====================================================
+# REORDER
+# =====================================================
 
+def get_low_stock():
     return api_request(
         method="GET",
         endpoint="/reorder/low-stock",
     )
 
 
+# =====================================================
+# ALERTS
+# =====================================================
+
 def get_alerts(
     status: str | None = None,
 ):
-    """
-    Retrieve alerts.
-
-    Optionally filter by OPEN or RESOLVED.
-    """
-
     endpoint = "/alerts"
 
     if status:
@@ -129,33 +262,102 @@ def get_alerts(
     )
 
 
-def get_purchase_requests():
+def resolve_alert(
+    alert_id: int,
+    user_id: int,
+    comment: str | None = None,
+):
     """
-    Retrieve purchase requests.
+    user_id remains in the request body temporarily
+    for schema compatibility.
+
+    FastAPI now ignores it and uses the authenticated
+    user's identity.
     """
 
+    return api_request(
+        method="POST",
+        endpoint=f"/alerts/{alert_id}/resolve",
+        json={
+            "performed_by_user_id":
+                user_id,
+
+            "comment":
+                comment,
+        },
+    )
+
+
+def sync_low_stock_alerts():
+    return api_request(
+        method="POST",
+        endpoint="/alerts/sync-low-stock",
+    )
+
+
+# =====================================================
+# PURCHASE REQUESTS
+# =====================================================
+
+def get_purchase_requests():
     return api_request(
         method="GET",
         endpoint="/purchase-requests",
     )
 
-def chat_with_agent(
-    message: str,
+
+def prepare_purchase_request(
+    product_id: int,
+    location_id: int,
     user_id: int,
+    notes: str | None = None,
 ):
     """
-    Send a user message to the Inventory Agent.
+    user_id remains temporarily for request-schema
+    compatibility.
+
+    The backend ignores it and uses the logged-in user.
     """
 
     return api_request(
         method="POST",
-        endpoint="/agent/chat",
+        endpoint="/purchase-requests/prepare",
         json={
-            "message": message,
-            "user_id": user_id,
+            "product_id":
+                product_id,
+
+            "location_id":
+                location_id,
+
+            "requested_by_user_id":
+                user_id,
+
+            "notes":
+                notes,
         },
-        timeout=60,
     )
+
+
+def submit_purchase_request(
+    purchase_request_id: int,
+    user_id: int,
+    comment: str | None = None,
+):
+    return api_request(
+        method="POST",
+        endpoint=(
+            f"/purchase-requests/"
+            f"{purchase_request_id}/submit"
+        ),
+        json={
+            "performed_by_user_id":
+                user_id,
+
+            "comment":
+                comment,
+        },
+    )
+
 
 def approve_purchase_request(
     purchase_request_id: int,
@@ -181,7 +383,7 @@ def approve_purchase_request(
 def reject_purchase_request(
     purchase_request_id: int,
     user_id: int,
-    comment: str,
+    comment: str | None = None,
 ):
     return api_request(
         method="POST",
@@ -199,26 +401,98 @@ def reject_purchase_request(
     )
 
 
-def resolve_alert(
-    alert_id: int,
+# =====================================================
+# INVENTORY AGENT
+# =====================================================
+
+def chat_with_agent(
+    message: str,
     user_id: int,
-    comment: str | None = None,
+):
+    """
+    user_id is retained temporarily for compatibility
+    with the current Streamlit UI.
+
+    FastAPI ignores it and identifies the real user
+    from the Bearer token.
+    """
+
+    return api_request(
+        method="POST",
+        endpoint="/agent/chat",
+        json={
+            "message":
+                message,
+
+            "user_id":
+                user_id,
+        },
+        timeout=90,
+    )
+
+
+# =====================================================
+# STOCK MOVEMENTS
+# =====================================================
+
+def get_stock_movements():
+    return api_request(
+        method="GET",
+        endpoint="/stock-movements",
+    )
+
+
+def record_stock_movement(
+    product_id: int,
+    location_id: int,
+    movement_type: str,
+    quantity: int,
+    user_id: int,
+    reason: str,
+    reference: str | None = None,
 ):
     return api_request(
         method="POST",
-        endpoint=(
-            f"/alerts/"
-            f"{alert_id}/resolve"
-        ),
+        endpoint="/stock-movements",
         json={
+            "product_id":
+                product_id,
+
+            "location_id":
+                location_id,
+
+            "movement_type":
+                movement_type,
+
+            "quantity":
+                quantity,
+
             "performed_by_user_id":
                 user_id,
 
-            "comment":
-                comment,
+            "reason":
+                reason,
+
+            "reference":
+                reference,
         },
     )
 
+
+# =====================================================
+# AUDIT LOG
+# =====================================================
+
+def get_audit_logs():
+    return api_request(
+        method="GET",
+        endpoint="/audit-logs",
+    )
+
+
+# =====================================================
+# HANDOFFS
+# =====================================================
 
 def get_handoffs(
     status: str | None = None,
@@ -226,9 +500,7 @@ def get_handoffs(
     endpoint = "/handoffs"
 
     if status:
-        endpoint += (
-            f"?status={status}"
-        )
+        endpoint += f"?status={status}"
 
     return api_request(
         method="GET",
@@ -256,57 +528,10 @@ def resolve_handoff(
         },
     )
 
-def get_stock_movements():
-    """
-    Retrieve stock movement history.
-    """
 
-    return api_request(
-        method="GET",
-        endpoint="/stock-movements",
-    )
-
-
-def record_stock_movement(
-    product_id: int,
-    location_id: int,
-    movement_type: str,
-    quantity: int,
-    user_id: int,
-    reason: str,
-    reference: str | None = None,
-):
-    """
-    Record a controlled inventory movement
-    through FastAPI.
-    """
-
-    return api_request(
-        method="POST",
-        endpoint="/stock-movements",
-        json={
-            "product_id":
-                product_id,
-
-            "location_id":
-                location_id,
-
-            "movement_type":
-                movement_type,
-
-            "quantity":
-                quantity,
-
-            "performed_by_user_id":
-                user_id,
-
-            "reason":
-                reason,
-
-            "reference":
-                reference or None,
-        },
-    )
+# =====================================================
+# LOOKUPS
+# =====================================================
 
 def get_locations():
     return api_request(
@@ -321,86 +546,14 @@ def get_suppliers():
         endpoint="/lookups/suppliers",
     )
 
-def get_audit_logs():
-    """
-    Retrieve the system audit trail.
-    """
-
-    return api_request(
-        method="GET",
-        endpoint="/audit-logs",
-    )
 
 def get_supplier_options(
     product_id: int,
 ):
-    """
-    Retrieve approved supplier options
-    for a product.
-    """
-
     return api_request(
         method="GET",
         endpoint=(
             f"/suppliers/product/"
             f"{product_id}"
         ),
-    )
-
-
-def prepare_purchase_request(
-    product_id: int,
-    location_id: int,
-    user_id: int,
-    notes: str | None = None,
-):
-    """
-    Prepare a replenishment purchase request.
-
-    The backend calculates the reorder quantity
-    and selects the appropriate supplier.
-    """
-
-    return api_request(
-        method="POST",
-        endpoint="/purchase-requests/prepare",
-        json={
-            "product_id":
-                product_id,
-
-            "location_id":
-                location_id,
-
-            "requested_by_user_id":
-                user_id,
-
-            "notes":
-                notes or None,
-        },
-    )
-
-
-def submit_purchase_request(
-    purchase_request_id: int,
-    user_id: int,
-    comment: str | None = None,
-):
-    """
-    Submit a draft purchase request
-    for management approval.
-    """
-
-    return api_request(
-        method="POST",
-        endpoint=(
-            f"/purchase-requests/"
-            f"{purchase_request_id}/submit"
-        ),
-        json={
-            "performed_by_user_id":
-                user_id,
-
-            "comment":
-                comment,
-        },
     )

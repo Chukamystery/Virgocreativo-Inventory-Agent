@@ -1,14 +1,35 @@
-def test_products_endpoint_uses_test_database(
+def test_products_endpoint_requires_authentication(
     client,
 ):
     """
-    The temporary database starts empty.
-
-    Therefore GET /products should work
-    successfully and return an empty list.
+    Product data must not be available
+    to unauthenticated users.
     """
 
     response = client.get(
+        "/products"
+    )
+
+    assert response.status_code == 401
+
+    assert response.json() == {
+        "detail":
+            "Authentication required."
+    }
+
+
+def test_products_endpoint_uses_test_database(
+    authenticated_client,
+):
+    """
+    An authenticated user should be able
+    to access the products endpoint.
+
+    The temporary test database starts empty,
+    so the endpoint should return an empty list.
+    """
+
+    response = authenticated_client.get(
         "/products"
     )
 

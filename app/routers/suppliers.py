@@ -3,9 +3,11 @@ from fastapi import (
     Depends,
     HTTPException,
 )
+
 from sqlalchemy.orm import Session
 
 from app import schemas
+from app.auth import get_current_user
 from app.database import get_db
 from app.services.procurement_service import (
     get_supplier_options,
@@ -15,12 +17,17 @@ from app.services.procurement_service import (
 router = APIRouter(
     prefix="/suppliers",
     tags=["Suppliers"],
+    dependencies=[
+        Depends(get_current_user)
+    ],
 )
 
 
 @router.get(
     "/product/{product_id}",
-    response_model=list[schemas.SupplierOptionRead],
+    response_model=list[
+        schemas.SupplierOptionRead
+    ],
 )
 def suppliers_for_product(
     product_id: int,

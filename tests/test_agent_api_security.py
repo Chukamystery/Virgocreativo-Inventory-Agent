@@ -1,17 +1,17 @@
-from app import models
+import logging
 
 
 # =====================================================
 # TEST 1
-# UNKNOWN USER RETURNS 403
+# UNAUTHENTICATED USER IS BLOCKED
 # =====================================================
 
-def test_unknown_agent_user_returns_403(
+def test_unauthenticated_agent_request_returns_401(
     client,
 ):
     """
-    Unknown users should be rejected before
-    the LLM is called.
+    The AI Agent must not be usable without
+    authentication.
     """
 
     response = client.post(
@@ -25,85 +25,102 @@ def test_unknown_agent_user_returns_403(
         },
     )
 
-    assert response.status_code == 403
+    assert response.status_code == 401
 
     assert response.json() == {
         "detail":
-            "Chat user not found or inactive"
+            "Authentication required."
     }
 
 
 # =====================================================
 # TEST 2
-# INACTIVE USER RETURNS 403
+# BODY USER ID CANNOT SPOOF IDENTITY
 # =====================================================
 
-def test_inactive_agent_user_returns_403(
-    client,
-    test_database,
+def test_agent_uses_authenticated_user_not_body_user_id(
+    authenticated_client,
+    authenticated_user,
+    monkeypatch,
 ):
     """
-    An inactive user should receive a
-    controlled authorization response.
+    A caller must not be able to impersonate
+    another user by changing user_id in the
+    request body.
     """
 
-    SessionLocal = (
-        test_database[
-            "session_factory"
-        ]
+    captured = {}
+
+    def fake_successful_agent(
+        db,
+        user_message,
+        user_id,
+    ):
+        captured["user_id"] = user_id
+
+        return {
+            "answer":
+                "Authenticated response.",
+
+            "tools_used":
+                [],
+
+            "model":
+                "test-model",
+
+            "prompt_version":
+                "1.0.0",
+        }
+
+    monkeypatch.setattr(
+        "app.routers.agent.run_inventory_agent",
+        fake_successful_agent,
     )
 
-    db = SessionLocal()
-
-    user = models.User(
-        full_name="Inactive API User",
-        role="PROCUREMENT_OFFICER",
-        active=False,
-    )
-
-    db.add(user)
-    db.commit()
-    db.refresh(user)
-
-    user_id = user.user_id
-
-    db.close()
-
-    response = client.post(
+    response = authenticated_client.post(
         "/agent/chat",
         json={
             "message":
                 "Show me current inventory.",
 
+            # Deliberately claim to be another user.
             "user_id":
-                user_id,
+                999999,
         },
     )
 
-    assert response.status_code == 403
+    assert response.status_code == 200
 
-    assert response.json() == {
-        "detail":
-            "Chat user not found or inactive"
-    }
+    # The backend must ignore the claimed ID
+    # and use the authenticated account.
+    assert (
+        captured["user_id"]
+        == authenticated_user.user_id
+    )
+
+    assert (
+        captured["user_id"]
+        != 999999
+    )
 
 
 # =====================================================
 # TEST 3
-# MISSING USER ID RETURNS 422
+# MISSING USER ID STILL FAILS SCHEMA VALIDATION
 # =====================================================
 
 def test_missing_user_id_returns_validation_error(
-    client,
+    authenticated_client,
 ):
     """
-    AgentChatRequest requires user_id.
+    user_id is still part of the current
+    request schema for compatibility.
 
-    FastAPI/Pydantic should reject malformed
-    requests before they reach the agent.
+    Authentication must succeed first so the
+    request can reach Pydantic validation.
     """
 
-    response = client.post(
+    response = authenticated_client.post(
         "/agent/chat",
         json={
             "message":
@@ -116,17 +133,18 @@ def test_missing_user_id_returns_validation_error(
 
 # =====================================================
 # TEST 4
-# INVALID USER ID VALUE RETURNS 422
+# INVALID USER ID STILL FAILS SCHEMA VALIDATION
 # =====================================================
 
 def test_invalid_user_id_returns_validation_error(
-    client,
+    authenticated_client,
 ):
     """
-    user_id must be greater than zero.
+    The compatibility user_id field must still
+    satisfy its current validation rules.
     """
 
-    response = client.post(
+    response = authenticated_client.post(
         "/agent/chat",
         json={
             "message":
@@ -146,8 +164,8 @@ def test_invalid_user_id_returns_validation_error(
 # =====================================================
 
 def test_internal_agent_error_is_sanitized(
-    client,
-    test_database,
+    authenticated_client,
+    authenticated_user,
     monkeypatch,
 ):
     """
@@ -155,36 +173,19 @@ def test_internal_agent_error_is_sanitized(
     a generic 500 response.
 
     Sensitive/internal exception text must
-    not be returned to the caller.
+    never be returned to the caller.
     """
-
-    SessionLocal = (
-        test_database[
-            "session_factory"
-        ]
-    )
-
-    db = SessionLocal()
-
-    user = models.User(
-        full_name="Active API User",
-        role="PROCUREMENT_OFFICER",
-        active=True,
-    )
-
-    db.add(user)
-    db.commit()
-    db.refresh(user)
-
-    user_id = user.user_id
-
-    db.close()
 
     def fake_agent_failure(
         db,
         user_message,
         user_id,
     ):
+        assert (
+            user_id
+            == authenticated_user.user_id
+        )
+
         raise RuntimeError(
             "SECRET_DATABASE_PASSWORD=abc123"
         )
@@ -194,14 +195,14 @@ def test_internal_agent_error_is_sanitized(
         fake_agent_failure,
     )
 
-    response = client.post(
+    response = authenticated_client.post(
         "/agent/chat",
         json={
             "message":
                 "Test internal failure.",
 
             "user_id":
-                user_id,
+                999999,
         },
     )
 
@@ -225,12 +226,12 @@ def test_internal_agent_error_is_sanitized(
 
 # =====================================================
 # TEST 6
-# VALID AGENT RESPONSE FORMAT
+# VALID AUTHENTICATED AGENT RESPONSE
 # =====================================================
 
 def test_valid_agent_response_structure(
-    client,
-    test_database,
+    authenticated_client,
+    authenticated_user,
     monkeypatch,
 ):
     """
@@ -238,33 +239,16 @@ def test_valid_agent_response_structure(
     consume OpenAI API credits.
     """
 
-    SessionLocal = (
-        test_database[
-            "session_factory"
-        ]
-    )
-
-    db = SessionLocal()
-
-    user = models.User(
-        full_name="Valid API User",
-        role="PROCUREMENT_OFFICER",
-        active=True,
-    )
-
-    db.add(user)
-    db.commit()
-    db.refresh(user)
-
-    user_id = user.user_id
-
-    db.close()
-
     def fake_successful_agent(
         db,
         user_message,
         user_id,
     ):
+        assert (
+            user_id
+            == authenticated_user.user_id
+        )
+
         return {
             "answer":
                 "Verified inventory response.",
@@ -286,14 +270,15 @@ def test_valid_agent_response_structure(
         fake_successful_agent,
     )
 
-    response = client.post(
+    response = authenticated_client.post(
         "/agent/chat",
         json={
             "message":
                 "How much inventory do we have?",
 
+            # Deliberately not the real ID.
             "user_id":
-                user_id,
+                999999,
         },
     )
 
@@ -310,16 +295,25 @@ def test_valid_agent_response_structure(
         "get_inventory_balance"
     ]
 
-    assert body["model"] == "test-model"
+    assert (
+        body["model"]
+        == "test-model"
+    )
 
     assert (
         body["prompt_version"]
         == "1.0.0"
     )
 
+
+# =====================================================
+# TEST 7
+# INTERNAL FAILURE IS LOGGED
+# =====================================================
+
 def test_internal_failure_is_logged(
-    client,
-    test_database,
+    authenticated_client,
+    authenticated_user,
     monkeypatch,
     caplog,
 ):
@@ -329,35 +323,16 @@ def test_internal_failure_is_logged(
     the API caller.
     """
 
-    import logging
-
-    SessionLocal = (
-        test_database[
-            "session_factory"
-        ]
-    )
-
-    db = SessionLocal()
-
-    user = models.User(
-        full_name="Logging Test User",
-        role="PROCUREMENT_OFFICER",
-        active=True,
-    )
-
-    db.add(user)
-    db.commit()
-    db.refresh(user)
-
-    user_id = user.user_id
-
-    db.close()
-
     def fake_agent_failure(
         db,
         user_message,
         user_id,
     ):
+        assert (
+            user_id
+            == authenticated_user.user_id
+        )
+
         raise RuntimeError(
             "Simulated internal database failure"
         )
@@ -370,14 +345,14 @@ def test_internal_failure_is_logged(
     with caplog.at_level(
         logging.ERROR
     ):
-        response = client.post(
+        response = authenticated_client.post(
             "/agent/chat",
             json={
                 "message":
                     "Trigger logging test.",
 
                 "user_id":
-                    user_id,
+                    999999,
             },
         )
 

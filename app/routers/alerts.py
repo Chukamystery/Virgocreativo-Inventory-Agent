@@ -3,10 +3,13 @@ from fastapi import (
     Depends,
     HTTPException,
 )
+
 from sqlalchemy.orm import Session
 
 from app import schemas
+from app.auth import get_current_user
 from app.database import get_db
+from app.models import User
 from app.services.alert_service import (
     get_alerts,
     resolve_alert,
@@ -17,6 +20,9 @@ from app.services.alert_service import (
 router = APIRouter(
     prefix="/alerts",
     tags=["Alerts"],
+    dependencies=[
+        Depends(get_current_user)
+    ],
 )
 
 
@@ -42,6 +48,7 @@ def list_alerts(
     "/sync-low-stock",
 )
 def sync_low_stock(
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     return sync_low_stock_alerts(
@@ -56,6 +63,7 @@ def sync_low_stock(
 def resolve_existing_alert(
     alert_id: int,
     request: schemas.AlertResolveRequest,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     try:
@@ -63,7 +71,7 @@ def resolve_existing_alert(
             db=db,
             alert_id=alert_id,
             performed_by_user_id=(
-                request.performed_by_user_id
+                current_user.user_id
             ),
             comment=request.comment,
         )

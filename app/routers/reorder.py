@@ -3,9 +3,11 @@ from fastapi import (
     Depends,
     HTTPException,
 )
+
 from sqlalchemy.orm import Session
 
 from app import schemas
+from app.auth import get_current_user
 from app.database import get_db
 from app.services.reorder_service import (
     get_low_stock_items,
@@ -16,6 +18,9 @@ from app.services.reorder_service import (
 router = APIRouter(
     prefix="/reorder",
     tags=["Reorder"],
+    dependencies=[
+        Depends(get_current_user)
+    ],
 )
 
 

@@ -7,6 +7,7 @@ from app.routers import (
     agent,
     alerts,
     audit,
+    auth_routes,
     handoffs,
     inventory,
     lookups,
@@ -48,6 +49,7 @@ app.include_router(suppliers.router)
 app.include_router(alerts.router)
 app.include_router(handoffs.router)
 app.include_router(lookups.router)
+app.include_router(auth_routes.router)
 
 @app.get("/")
 def root():

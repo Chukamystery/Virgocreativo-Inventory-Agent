@@ -4,10 +4,13 @@ from fastapi import (
     HTTPException,
     status,
 )
+
 from sqlalchemy.orm import Session
 
 from app import schemas
+from app.auth import get_current_user
 from app.database import get_db
+from app.models import User
 from app.services.stock_service import (
     get_stock_movements,
     record_stock_movement,
@@ -17,6 +20,9 @@ from app.services.stock_service import (
 router = APIRouter(
     prefix="/stock-movements",
     tags=["Stock Movements"],
+    dependencies=[
+        Depends(get_current_user)
+    ],
 )
 
 
@@ -27,12 +33,20 @@ router = APIRouter(
 )
 def create_stock_movement(
     movement: schemas.StockMovementCreate,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    authenticated_movement = movement.model_copy(
+        update={
+            "performed_by_user_id":
+                current_user.user_id
+        }
+    )
+
     try:
         return record_stock_movement(
             db,
-            movement,
+            authenticated_movement,
         )
 
     except PermissionError as exc:
@@ -50,7 +64,9 @@ def create_stock_movement(
 
 @router.get(
     "",
-    response_model=list[schemas.StockMovementRead],
+    response_model=list[
+        schemas.StockMovementRead
+    ],
 )
 def list_stock_movements(
     db: Session = Depends(get_db),

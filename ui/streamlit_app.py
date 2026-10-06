@@ -11,19 +11,21 @@ from api_client import (
     get_audit_logs,
     get_handoffs,
     get_inventory,
+    get_locations,
     get_low_stock,
+    get_my_profile,
     get_products,
     get_purchase_requests,
     get_stock_movements,
-    get_locations,
     get_supplier_options,
-prepare_purchase_request,
-submit_purchase_request,
     get_suppliers,
+    login_user,
+    prepare_purchase_request,
     record_stock_movement,
     reject_purchase_request,
     resolve_alert,
     resolve_handoff,
+    submit_purchase_request,
 )
 
 
@@ -105,6 +107,171 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+# =====================================================
+# AUTHENTICATION
+# =====================================================
+
+if "access_token" not in st.session_state:
+    st.session_state.access_token = None
+
+if "current_user" not in st.session_state:
+    st.session_state.current_user = None
+
+
+def logout():
+    """
+    Clear the authenticated Streamlit session.
+
+    Clearing all session state also prevents one user
+    from seeing another user's cached chat/widget state
+    after logout on the same browser.
+    """
+    st.session_state.clear()
+    st.rerun()
+
+
+# -----------------------------------------------------
+# LOGIN SCREEN
+# -----------------------------------------------------
+
+if not st.session_state.access_token:
+
+    st.markdown(
+        "# 📦 Virgocreativo Inventory Agent"
+    )
+
+    st.markdown(
+        """
+        **Secure access to inventory operations,
+        procurement and AI assistance.**
+        """
+    )
+
+    st.divider()
+
+    login_col, _ = st.columns(
+        [1, 1]
+    )
+
+    with login_col:
+
+        st.subheader(
+            "Sign in"
+        )
+
+        with st.form(
+            "login_form"
+        ):
+
+            email = st.text_input(
+                "Email"
+            )
+
+            password = st.text_input(
+                "Password",
+                type="password",
+            )
+
+            submitted = st.form_submit_button(
+                "Sign in",
+                use_container_width=True,
+            )
+
+        if submitted:
+
+            if (
+                not email.strip()
+                or not password
+            ):
+                st.error(
+                    "Enter your email and password."
+                )
+
+            else:
+                try:
+                    auth_data = login_user(
+                        email=email.strip(),
+                        password=password,
+                    )
+
+                    access_token = (
+                        auth_data.get(
+                            "access_token"
+                        )
+                    )
+
+                    if not access_token:
+                        raise InventoryAPIError(
+                            "Login succeeded but no access token was returned."
+                        )
+
+                    st.session_state.access_token = (
+                        access_token
+                    )
+
+                    profile = get_my_profile()
+
+                    st.session_state.current_user = (
+                        profile
+                    )
+
+                    st.rerun()
+
+                except InventoryAPIError as exc:
+
+                    st.session_state.access_token = None
+                    st.session_state.current_user = None
+
+                    st.error(
+                        str(exc)
+                    )
+
+    st.stop()
+
+
+# -----------------------------------------------------
+# RESTORE USER PROFILE IF NEEDED
+# -----------------------------------------------------
+
+if (
+    st.session_state.access_token
+    and not st.session_state.current_user
+):
+    try:
+        st.session_state.current_user = (
+            get_my_profile()
+        )
+
+    except InventoryAPIError:
+        st.session_state.access_token = None
+        st.session_state.current_user = None
+
+        st.error(
+            "Your session is no longer valid. "
+            "Please sign in again."
+        )
+
+        st.stop()
+
+
+current_user = (
+    st.session_state.current_user
+)
+
+if not current_user:
+    st.session_state.access_token = None
+    st.error(
+        "Unable to identify the signed-in user. "
+        "Please sign in again."
+    )
+    st.stop()
+
+# The acting user now comes only from the verified
+# /auth/me response. There is no manual user selector.
+acting_user_id = (
+    current_user["user_id"]
+)
+
 
 # =====================================================
 # HEADER
@@ -158,43 +325,31 @@ with st.sidebar:
         API_BASE_URL
     )
 
-    st.info(
-        "Demo environment. "
-        "Current user IDs are not yet "
-        "production authentication."
+    st.divider()
+
+    st.subheader(
+        "Signed in user"
+    )
+
+    st.write(
+        f"**{current_user['full_name']}**"
+    )
+
+    st.caption(
+        f"Role: {current_user['role']}"
+    )
+
+    st.caption(
+        f"User ID: {current_user['user_id']}"
     )
 
     st.divider()
 
-    st.subheader(
-        "Demo User"
-    )
-
-    demo_users = {
-        "Ada Inventory — Inventory Staff": 1,
-        "Musa Manager — Inventory Manager": 2,
-        "Nneka Procurement — Procurement Officer": 3,
-        "System Admin — Admin": 4,
-    }
-
-    selected_user = st.selectbox(
-        "Acting user",
-        options=list(
-            demo_users.keys()
-        ),
-        index=2,
-    )
-
-    acting_user_id = (
-        demo_users[
-            selected_user
-        ]
-    )
-
-    st.caption(
-        f"Current demo user ID: "
-        f"{acting_user_id}"
-    )
+    if st.button(
+        "Log out",
+        use_container_width=True,
+    ):
+        logout()
 
     if st.button(
         "🔄 Refresh Dashboard",
@@ -307,12 +462,21 @@ supplier_map = {
 }
 
 
+# Human-readable names for the seeded business users.
+# These are display labels only; authorization never
+# depends on this mapping.
 user_name_map = {
-    user_id:
-        label.split(" — ")[0]
-    for label, user_id
-    in demo_users.items()
+    1: "Ada Inventory",
+    2: "Musa Manager",
+    3: "Nneka Procurement",
+    4: "System Admin",
 }
+
+# Ensure the current authenticated user's name is always
+# available even if additional users are added later.
+user_name_map[
+    current_user["user_id"]
+] = current_user["full_name"]
 
 # -----------------------------------------------------
 # LOW STOCK LOOKUP
@@ -1006,8 +1170,8 @@ with procurement_tab:
     )
 
     st.info(
-        f"Acting as: {selected_user} "
-        f"(User ID {acting_user_id})"
+        f"Signed in as: {current_user['full_name']} "
+        f"({current_user['role']})"
     )
 
 
@@ -1685,8 +1849,8 @@ with assistant_tab:
     )
 
     st.info(
-        f"Acting as: {selected_user} "
-        f"(User ID {acting_user_id})"
+        f"Signed in as: {current_user['full_name']} "
+        f"({current_user['role']})"
     )
 
     # -------------------------------------------------
@@ -1893,8 +2057,8 @@ with actions_tab:
     )
 
     st.info(
-        f"Acting as: {selected_user} "
-        f"(User ID {acting_user_id})"
+        f"Signed in as: {current_user['full_name']} "
+        f"({current_user['role']})"
     )
 
     # =================================================
@@ -2271,8 +2435,8 @@ with movements_tab:
     )
 
     st.info(
-        f"Acting as: {selected_user} "
-        f"(User ID {acting_user_id})"
+        f"Signed in as: {current_user['full_name']} "
+        f"({current_user['role']})"
     )
 
     # =================================================

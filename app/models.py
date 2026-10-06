@@ -1,3 +1,4 @@
+from abc import ABC, abstractmethod
 from datetime import datetime
 
 from sqlalchemy import DateTime, Text
@@ -20,6 +21,37 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.database import Base
 
 
+class unique(ABC):
+    """Base contract for value objects that can be compared by a stable key."""
+
+    @property
+    @abstractmethod
+    def unique_key(self):
+        """Return a stable identity payload for this object."""
+
+    @classmethod
+    @abstractmethod
+    def from_key(cls, key):
+        """Rebuild an instance from its stable identity payload."""
+
+    def matches(self, other: object) -> bool:
+        if not isinstance(other, unique):
+            return False
+        return self.unique_key == other.unique_key
+
+    def __eq__(self, other: object) -> bool:
+        return self.matches(other)
+
+    def __hash__(self) -> int:
+        return hash(self.unique_key)
+
+    def __str__(self) -> str:
+        key = self.unique_key
+        if isinstance(key, (list, tuple)):
+            return f"{self.__class__.__name__}({', '.join(str(part) for part in key)})"
+        return f"{self.__class__.__name__}({key})"
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -31,6 +63,13 @@ class User(Base):
     full_name: Mapped[str] = mapped_column(
         String(150),
         nullable=False
+    )
+
+    auth_user_id: Mapped[str | None] = mapped_column(
+                String(36),
+                unique=True,
+    nullable=True,
+    index=True
     )
 
     role: Mapped[str] = mapped_column(

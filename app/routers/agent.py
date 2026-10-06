@@ -4,17 +4,18 @@ from fastapi import (
     HTTPException,
 )
 
-from app.logging_config import (
-    get_logger,
-)
-
 from sqlalchemy.orm import Session
 
 from app import schemas
 from app.agent.agent_service import (
     run_inventory_agent,
 )
+from app.auth import get_current_user
 from app.database import get_db
+from app.logging_config import (
+    get_logger,
+)
+from app.models import User
 
 
 logger = get_logger(
@@ -33,10 +34,14 @@ router = APIRouter(
 )
 def chat_with_inventory_agent(
     request: schemas.AgentChatRequest,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """
     Send a message to the Inventory Agent.
+
+    The authenticated user's identity is used.
+    Any user_id supplied by the client is ignored.
 
     Error handling rules:
 
@@ -57,7 +62,7 @@ def chat_with_inventory_agent(
         return run_inventory_agent(
             db=db,
             user_message=request.message,
-            user_id=request.user_id,
+            user_id=current_user.user_id,
         )
 
     except PermissionError as exc:
