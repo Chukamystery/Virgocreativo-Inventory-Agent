@@ -19,6 +19,7 @@ from api_client import (
     get_stock_movements,
     get_supplier_options,
     get_suppliers,
+    get_users,
     login_user,
     prepare_purchase_request,
     record_stock_movement,
@@ -394,6 +395,8 @@ try:
     
     suppliers = get_suppliers()
 
+    users = get_users()
+
 except InventoryAPIError as exc:
 
     st.error(
@@ -461,19 +464,21 @@ supplier_map = {
     for supplier in suppliers
 }
 
+# =====================================================
+# USER NAME LOOKUP
+# =====================================================
 
 # Human-readable names for the seeded business users.
 # These are display labels only; authorization never
 # depends on this mapping.
 user_name_map = {
-    1: "Ada Inventory",
-    2: "Musa Manager",
-    3: "Nneka Procurement",
-    4: "System Admin",
+    user["user_id"]:
+        user["full_name"]
+    for user in users
 }
 
-# Ensure the current authenticated user's name is always
-# available even if additional users are added later.
+# Keep the currently authenticated user available
+# as a fallback.
 user_name_map[
     current_user["user_id"]
 ] = current_user["full_name"]
