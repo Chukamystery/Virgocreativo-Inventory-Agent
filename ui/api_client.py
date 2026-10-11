@@ -198,11 +198,21 @@ def login_user(
 
     return data
 
-
 def get_my_profile():
     """
     Return the Inventory Agent user linked
     to the authenticated Supabase account.
+    """
+
+    return api_request(
+        method="GET",
+        endpoint="/auth/me",
+    )
+
+
+def get_users():
+    """
+    Return active Inventory Agent users.
 
     Used by the dashboard to display real
     employee names instead of labels such as
@@ -213,7 +223,6 @@ def get_my_profile():
         method="GET",
         endpoint="/auth/users",
     )
-
 
 # =====================================================
 # PRODUCTS
