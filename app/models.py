@@ -66,15 +66,20 @@ class User(Base):
     )
 
     auth_user_id: Mapped[str | None] = mapped_column(
-                String(36),
-                unique=True,
-    nullable=True,
-    index=True
+        String(36),
+        unique=True,
+        nullable=True,
+        index=True
     )
 
     role: Mapped[str] = mapped_column(
         String(50),
         nullable=False
+    )
+
+    business_role: Mapped[str | None] = mapped_column(
+        String(100),
+        nullable=True
     )
 
     active: Mapped[bool] = mapped_column(

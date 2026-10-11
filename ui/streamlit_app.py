@@ -332,31 +332,62 @@ with st.sidebar:
         "Signed in user"
     )
 
-    st.write(
-        f"**{current_user['full_name']}**"
+    display_role = (
+    current_user.get("business_role")
+    or current_user["role"]
+        .replace("_", " ")
+        .title()
+)
+
+role_descriptions = {
+    "Inventory Staff":
+        "Handles day-to-day inventory activities.",
+
+    "Inventory Manager":
+        "Manages stock movements and inventory operations.",
+
+    "Procurement Officer":
+        "Prepares and submits purchase requests.",
+
+    "Approver / Manager":
+        "Reviews and approves or rejects purchase requests.",
+
+    "Administrator":
+        "Oversees system administration and operations.",
+}
+
+st.write(
+    f"**{current_user['full_name']}**"
+)
+
+st.markdown(
+    f"### {display_role}"
+)
+
+st.caption(
+    role_descriptions.get(
+        display_role,
+        "Authorized Inventory Agent user.",
     )
+)
 
-    st.caption(
-        f"Role: {current_user['role']}"
-    )
+st.caption(
+    f"System access: {current_user['role']}"
+)
 
-    st.caption(
-        f"User ID: {current_user['user_id']}"
-    )
+st.divider()
 
-    st.divider()
+if st.button(
+    "Log out",
+    use_container_width=True,
+):
+    logout()
 
-    if st.button(
-        "Log out",
-        use_container_width=True,
-    ):
-        logout()
-
-    if st.button(
-        "🔄 Refresh Dashboard",
-        use_container_width=True,
-    ):
-        st.rerun()
+if st.button(
+    "🔄 Refresh Dashboard",
+    use_container_width=True,
+):
+    st.rerun()
 
 
 # =====================================================

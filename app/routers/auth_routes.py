@@ -37,6 +37,9 @@ def get_my_profile(
         "role":
             current_user.role,
 
+        "business_role":
+            current_user.business_role,
+
         "active":
             current_user.active,
 
@@ -88,6 +91,9 @@ def list_active_users(
 
             "role":
                 user.role,
+
+            "business_role":
+                user.business_role,
         }
         for user in users
     ]
